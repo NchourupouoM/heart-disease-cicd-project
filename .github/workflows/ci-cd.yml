@@ -12,6 +12,11 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
+    # NOUVEAU : On définit une variable d'environnement pour le job
+    # Ceci est la clé pour résoudre le problème.
+    env:
+      THRESHOLD: ${{ secrets.THRESHOLD_SCORE }}
 
     steps:
       - name: Checkout repository
@@ -40,40 +45,39 @@ jobs:
 
       # --- BLOC DE DÉPLOIEMENT ---
       - name: Deploy to Hugging Face Hub
-        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
-        if: ${{ steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : On compare maintenant avec env.THRESHOLD
+        # Notez l'absence de ${{...}} car c'est une condition if
+        if: steps.evaluate.outputs.score >= env.THRESHOLD
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: python scripts/deploy.py
       
       # --- BLOC DE GÉNÉRATION DU SITE ---
       - name: Generate static site for results (Deployment Case)
-        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
-        if: ${{ steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : On compare avec env.THRESHOLD
+        if: steps.evaluate.outputs.score >= env.THRESHOLD
         run: |
-          # ... (contenu inchangé) ...
           mkdir -p site
           echo "<html><body>" > site/index.html
           echo "<h1>Résultats du Modèle de Prédiction Cardiaque</h1>" >> site/index.html
           echo "<h2>Statut : DÉPLOYÉ AVEC SUCCÈS</h2>" >> site/index.html
           echo "<p>Dernière mise à jour : $(date)</p>" >> site/index.html
-          echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil : ${{ secrets.THRESHOLD_SCORE }})</h3>" >> site/index.html
+          echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil : ${{ env.THRESHOLD }})</h3>" >> site/index.html
           echo "<p>Le modèle a été déployé car le score est supérieur ou égal au seuil.</p>" >> site/index.html
           echo "<p>Lien vers le modèle sur Hugging Face : <a href='https://huggingface.co/NchourupouoM/heart-disease-classifier'>Voir le modèle</a></p>" >> site/index.html
           echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
 
       - name: Generate static site for results (Non-Deployment Case)
-        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
-        if: ${{ steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : On compare avec env.THRESHOLD
+        if: steps.evaluate.outputs.score < env.THRESHOLD
         run: |
-          # ... (contenu inchangé) ...
           mkdir -p site
           echo "<html><body>" > site/index.html
           echo "<h1>Résultats du Modèle de Prédiction Cardiaque</h1>" >> site/index.html
           echo "<h2>Statut : DÉPLOIEMENT REFUSÉ</h2>" >> site/index.html
           echo "<p>Dernière mise à jour : $(date)</p>" >> site/index.html
-          echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil Requis : ${{ secrets.THRESHOLD_SCORE }})</h3>" >> site/index.html
+          echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil Requis : ${{ env.THRESHOLD }})</h3>" >> site/index.html
           echo "<p>Le modèle n'a pas été déployé car le score est inférieur au seuil requis.</p>" >> site/index.html
           echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
@@ -91,11 +95,10 @@ jobs:
           
       # --- BLOC DE NOTIFICATIONS (ADAPTÉ) ---
       - name: Send success email notification (Deployment)
-        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
-        if: ${{ success() && steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : On compare avec env.THRESHOLD
+        if: success() && steps.evaluate.outputs.score >= env.THRESHOLD
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -103,39 +106,36 @@ jobs:
           subject: "✅ [SUCCÈS] Déploiement du modèle Heart Disease"
           body: |
             Bonjour,
-            Le modèle de classification des maladies cardiaques a été validé et déployé avec succès.
-            Score d'accuracy obtenu : ${{ steps.evaluate.outputs.score }} (Seuil : ${{ secrets.THRESHOLD_SCORE }})
+            Le modèle a été validé et déployé avec succès.
+            Score d'accuracy obtenu : ${{ steps.evaluate.outputs.score }} (Seuil : ${{ env.THRESHOLD }})
             Commit par : ${{ github.actor }}
-            Lien vers les logs du workflow : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Lien vers les logs : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.ADMIN_EMAIL }},${{ github.event.pusher.email }}
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
 
       - name: Send failure email notification (Low Score)
-        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
-        if: ${{ success() && steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : On compare avec env.THRESHOLD
+        if: success() && steps.evaluate.outputs.score < env.THRESHOLD
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
-          subject: "ℹ️ [INFO] Non-déploiement du modèle Heart Disease (Score trop bas)"
+          subject: "ℹ️ [INFO] Non-déploiement du modèle (Score trop bas)"
           body: |
             Bonjour,
-            La validation du modèle de classification des maladies cardiaques a réussi, mais le score est trop bas pour un déploiement.
-            Score d'accuracy obtenu : ${{ steps.evaluate.outputs.score }} (Seuil requis : ${{ secrets.THRESHOLD_SCORE }})
-            Le déploiement a été annulé. Aucune action n'est requise, sauf si une amélioration du modèle est souhaitée.
+            La validation a réussi, mais le score est trop bas pour un déploiement.
+            Score d'accuracy obtenu : ${{ steps.evaluate.outputs.score }} (Seuil requis : ${{ env.THRESHOLD }})
             Commit par : ${{ github.actor }}
-            Lien vers les logs du workflow : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Lien vers les logs : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.ADMIN_EMAIL }},${{ github.event.pusher.email }}
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
 
       - name: Send failure email notification (Job Failed)
-        if: ${{ failure() }}
+        if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -143,9 +143,9 @@ jobs:
           subject: "❌ [ÉCHEC] Le workflow CI/CD a échoué"
           body: |
             Bonjour,
-            Le workflow pour le modèle Heart Disease a échoué en raison d'une erreur.
-            Merci de consulter les logs pour diagnostiquer le problème.
+            Le workflow a échoué en raison d'une erreur.
+            Merci de consulter les logs.
             Commit par : ${{ github.actor }}
-            Lien vers les logs du workflow : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Lien vers les logs : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           to: ${{ secrets.ADMIN_EMAIL }},${{ github.event.pusher.email }}
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
