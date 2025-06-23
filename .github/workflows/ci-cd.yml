@@ -30,7 +30,6 @@ jobs:
       - name: Train model
         run: python scripts/train.py
 
-      # Étape clé : L'output de cette étape est maintenant la seule source de vérité
       - name: Evaluate model
         id: evaluate
         run: |
@@ -39,20 +38,18 @@ jobs:
           echo "Model Score is: $SCORE"
           echo "score=$SCORE" >> $GITHUB_OUTPUT
 
-      # L'ÉTAPE "check_score" A ÉTÉ SUPPRIMÉE. Elle n'est plus nécessaire.
-
       # --- BLOC DE DÉPLOIEMENT ---
       - name: Deploy to Hugging Face Hub
-        # MODIFIÉ : Comparaison numérique directe et robuste
-        if: steps.evaluate.outputs.score >= ${{secrets.THRESHOLD_SCORE }}
+        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
+        if: ${{ steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: python scripts/deploy.py
       
       # --- BLOC DE GÉNÉRATION DU SITE ---
       - name: Generate static site for results (Deployment Case)
-        # MODIFIÉ : Utilisation de la même condition robuste
-        if: steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
+        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
+        if: ${{ steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
         run: |
           # ... (contenu inchangé) ...
           mkdir -p site
@@ -66,10 +63,9 @@ jobs:
           echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
 
-
       - name: Generate static site for results (Non-Deployment Case)
-        # MODIFIÉ : Utilisation de la condition inverse
-        if: steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE
+        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
+        if: ${{ steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE }}
         run: |
           # ... (contenu inchangé) ...
           mkdir -p site
@@ -95,8 +91,8 @@ jobs:
           
       # --- BLOC DE NOTIFICATIONS (ADAPTÉ) ---
       - name: Send success email notification (Deployment)
-        # MODIFIÉ : Utilisation de la condition directe
-        if: success() && steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
+        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
+        if: ${{ success() && steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE }}
         uses: dawidd6/action-send-mail@v3
         with:
           # ... (contenu inchangé) ...
@@ -115,8 +111,8 @@ jobs:
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
 
       - name: Send failure email notification (Low Score)
-        # MODIFIÉ : Utilisation de la condition directe
-        if: success() && steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE
+        # CORRIGÉ : Expression enveloppée dans ${{ ... }}
+        if: ${{ success() && steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE }}
         uses: dawidd6/action-send-mail@v3
         with:
           # ... (contenu inchangé) ...
@@ -136,7 +132,7 @@ jobs:
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
 
       - name: Send failure email notification (Job Failed)
-        if: failure()
+        if: ${{ failure() }}
         uses: dawidd6/action-send-mail@v3
         with:
           # ... (contenu inchangé) ...
