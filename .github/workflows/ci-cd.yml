@@ -2,9 +2,9 @@ name: CI/CD Pipeline for Heart Disease Model
 
 on:
   push:
-    branches: [ dev ]
+    branches: [ main ]
   pull_request:
-    branches: [ dev ]
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -22,6 +22,7 @@ jobs:
         with:
           python-version: '3.9'
 
+      # MODIFIÉ : Installation des dépendances (incluant pdoc)
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -44,7 +45,6 @@ jobs:
           THRESHOLD=${{ secrets.THRESHOLD_SCORE }}
           echo "Model Score: $SCORE"
           echo "Threshold: $THRESHOLD"
-          # Utilisation de awk pour une comparaison plus robuste des nombres à virgule
           if $(awk -v score="$SCORE" -v threshold="$THRESHOLD" 'BEGIN {exit !(score >= threshold)}'); then
             echo "✅ Score is above threshold. Proceeding to deployment."
             echo "deploy=true" >> $GITHUB_OUTPUT
@@ -59,7 +59,10 @@ jobs:
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: python scripts/deploy.py
+      
+      # --- BLOC DE GÉNÉRATION DU SITE ---
         
+      # MODIFIÉ : Ajout d'un lien vers la doc
       - name: Generate static site for results (Deployment Case)
         if: steps.check_score.outputs.deploy == 'true'
         run: |
@@ -71,34 +74,44 @@ jobs:
           echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil : ${{ secrets.THRESHOLD_SCORE }})</h3>" >> site/index.html
           echo "<p>Le modèle a été déployé car le score est supérieur ou égal au seuil.</p>" >> site/index.html
           echo "<p>Lien vers le modèle sur Hugging Face : <a href='https://huggingface.co/NchourupouoM/heart-disease-classifier'>Voir le modèle</a></p>" >> site/index.html
+          echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
 
+      # MODIFIÉ : Ajout d'un lien vers la doc
       - name: Generate static site for results (Non-Deployment Case)
         if: steps.check_score.outputs.deploy == 'false'
         run: |
           mkdir -p site
           echo "<html><body>" > site/index.html
           echo "<h1>Résultats du Modèle de Prédiction Cardiaque</h1>" >> site/index.html
-          echo "<h2>Statut : DÉPLOIEMENT REFUSÉ</h2>" >> site/-index.html
+          echo "<h2>Statut : DÉPLOIEMENT REFUSÉ</h2>" >> site/index.html
           echo "<p>Dernière mise à jour : $(date)</p>" >> site/index.html
           echo "<h3>Score d'Accuracy : ${{ steps.evaluate.outputs.score }} (Seuil Requis : ${{ secrets.THRESHOLD_SCORE }})</h3>" >> site/index.html
           echo "<p>Le modèle n'a pas été déployé car le score est inférieur au seuil requis.</p>" >> site/index.html
+          echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
+      
+      # NOUVELLE ÉTAPE : Générer la documentation technique avec pdoc
+      - name: Generate Technical Documentation
+        if: success()
+        run: |
+          # Génère la doc HTML pour le module 'scripts' et la place dans 'site/docs'
+          pdoc --html scripts -o site/docs
           
       - name: Deploy to GitHub Pages
-        # Cette étape s'exécute toujours si le job réussit jusqu'ici
         if: success()
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: site
+          folder: site # Déploie le dossier 'site' entier (contenant l'index et le sous-dossier /docs)
           
-      # --- BLOC DE NOTIFICATIONS (PLUS CLAIR) ---
+      # --- BLOC DE NOTIFICATIONS (INCHANGÉ) ---
+      # ... (toutes les étapes d'envoi d'email restent ici)
+
       - name: Send success email notification (Deployment)
         if: success() && steps.check_score.outputs.deploy == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu de l'email de succès, inchangé)
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -117,7 +130,6 @@ jobs:
         if: success() && steps.check_score.outputs.deploy == 'false'
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu de l'email d'échec, mais spécifique au score bas)
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -137,7 +149,6 @@ jobs:
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
-          # ... (contenu de l'email d'échec pour une VRAIE erreur)
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
