@@ -2,9 +2,9 @@ name: CI/CD Pipeline for Heart Disease Model
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ dev ]
 
 permissions:
   contents: write
@@ -22,7 +22,6 @@ jobs:
         with:
           python-version: '3.9'
 
-      # MODIFIÉ : Installation des dépendances (incluant pdoc)
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -31,41 +30,31 @@ jobs:
       - name: Train model
         run: python scripts/train.py
 
+      # Étape clé : L'output de cette étape est maintenant la seule source de vérité
       - name: Evaluate model
         id: evaluate
         run: |
           python scripts/evaluate.py
           SCORE=$(jq .accuracy metrics/metrics.json)
+          echo "Model Score is: $SCORE"
           echo "score=$SCORE" >> $GITHUB_OUTPUT
 
-      - name: Check score against threshold
-        id: check_score
-        run: |
-          SCORE=${{ steps.evaluate.outputs.score }}
-          THRESHOLD=${{ secrets.THRESHOLD_SCORE }}
-          echo "Model Score: $SCORE"
-          echo "Threshold: $THRESHOLD"
-          if $(awk -v score="$SCORE" -v threshold="$THRESHOLD" 'BEGIN {exit !(score >= threshold)}'); then
-            echo "✅ Score is above threshold. Proceeding to deployment."
-            echo "deploy=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Score is below threshold. Deployment skipped."
-            echo "deploy=false" >> $GITHUB_OUTPUT
-          fi
-          
+      # L'ÉTAPE "check_score" A ÉTÉ SUPPRIMÉE. Elle n'est plus nécessaire.
+
       # --- BLOC DE DÉPLOIEMENT ---
       - name: Deploy to Hugging Face Hub
-        if: steps.check_score.outputs.deploy == 'true'
+        # MODIFIÉ : Comparaison numérique directe et robuste
+        if: steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: python scripts/deploy.py
       
       # --- BLOC DE GÉNÉRATION DU SITE ---
-        
-      # MODIFIÉ : Ajout d'un lien vers la doc
       - name: Generate static site for results (Deployment Case)
-        if: steps.check_score.outputs.deploy == 'true'
+        # MODIFIÉ : Utilisation de la même condition robuste
+        if: steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
         run: |
+          # ... (contenu inchangé) ...
           mkdir -p site
           echo "<html><body>" > site/index.html
           echo "<h1>Résultats du Modèle de Prédiction Cardiaque</h1>" >> site/index.html
@@ -77,10 +66,12 @@ jobs:
           echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
 
-      # MODIFIÉ : Ajout d'un lien vers la doc
+
       - name: Generate static site for results (Non-Deployment Case)
-        if: steps.check_score.outputs.deploy == 'false'
+        # MODIFIÉ : Utilisation de la condition inverse
+        if: steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE
         run: |
+          # ... (contenu inchangé) ...
           mkdir -p site
           echo "<html><body>" > site/index.html
           echo "<h1>Résultats du Modèle de Prédiction Cardiaque</h1>" >> site/index.html
@@ -90,28 +81,25 @@ jobs:
           echo "<p>Le modèle n'a pas été déployé car le score est inférieur au seuil requis.</p>" >> site/index.html
           echo "<p><a href='docs/index.html'>Voir la documentation technique du projet</a></p>" >> site/index.html
           echo "</body></html>" >> site/index.html
-      
-      # NOUVELLE ÉTAPE : Générer la documentation technique avec pdoc
+          
       - name: Generate Technical Documentation
         if: success()
-        run: |
-          # Génère la doc HTML pour le module 'scripts' et la place dans 'site/docs'
-          pdoc scripts/train.py scripts/evaluate.py scripts/deploy.py -o site/docs
+        run: pdoc scripts/train.py scripts/evaluate.py scripts/deploy.py -o site/docs
           
       - name: Deploy to GitHub Pages
         if: success()
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: site # Déploie le dossier 'site' entier (contenant l'index et le sous-dossier /docs)
+          folder: site
           
-      # --- BLOC DE NOTIFICATIONS (INCHANGÉ) ---
-      # ... (toutes les étapes d'envoi d'email restent ici)
-
+      # --- BLOC DE NOTIFICATIONS (ADAPTÉ) ---
       - name: Send success email notification (Deployment)
-        if: success() && steps.check_score.outputs.deploy == 'true'
+        # MODIFIÉ : Utilisation de la condition directe
+        if: success() && steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
         uses: dawidd6/action-send-mail@v3
         with:
+          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -127,9 +115,11 @@ jobs:
           from: GitHub Actions Notifier <${{ secrets.SMTP_USER }}>
 
       - name: Send failure email notification (Low Score)
-        if: success() && steps.check_score.outputs.deploy == 'false'
+        # MODIFIÉ : Utilisation de la condition directe
+        if: success() && steps.evaluate.outputs.score < secrets.THRESHOLD_SCORE
         uses: dawidd6/action-send-mail@v3
         with:
+          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
@@ -149,6 +139,7 @@ jobs:
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
+          # ... (contenu inchangé) ...
           server_address: smtp.gmail.com
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
