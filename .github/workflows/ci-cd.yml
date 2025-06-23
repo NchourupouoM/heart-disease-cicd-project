@@ -44,7 +44,7 @@ jobs:
       # --- BLOC DE DÉPLOIEMENT ---
       - name: Deploy to Hugging Face Hub
         # MODIFIÉ : Comparaison numérique directe et robuste
-        if: steps.evaluate.outputs.score >= secrets.THRESHOLD_SCORE
+        if: steps.evaluate.outputs.score >= ${{secrets.THRESHOLD_SCORE }}
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: python scripts/deploy.py
