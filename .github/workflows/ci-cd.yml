@@ -96,7 +96,7 @@ jobs:
         if: success()
         run: |
           # Génère la doc HTML pour le module 'scripts' et la place dans 'site/docs'
-          pdoc scripts -o site/docs
+          pdoc scripts/train.py scripts/evaluate.py scripts/deploy.py -o site/docs
           
       - name: Deploy to GitHub Pages
         if: success()
